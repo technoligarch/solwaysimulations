@@ -6,6 +6,7 @@ export async function createSession(agents, scenario, initialPrompt) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ agents, scenario, initialPrompt }),
   });
+  if (!response.ok) throw new Error('Failed to create session');
   return response.json();
 }
 
@@ -13,6 +14,7 @@ export async function startSession(sessionId) {
   const response = await fetch(`${API_BASE}/session/${sessionId}/start`, {
     method: 'POST',
   });
+  if (!response.ok) throw new Error('Failed to start session');
   return response.json();
 }
 
@@ -20,6 +22,7 @@ export async function stopSession(sessionId) {
   const response = await fetch(`${API_BASE}/session/${sessionId}/stop`, {
     method: 'POST',
   });
+  if (!response.ok) throw new Error('Failed to stop session');
   return response.json();
 }
 
@@ -29,35 +32,50 @@ export async function injectGodMode(sessionId, prompt) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ prompt }),
   });
+  if (!response.ok) throw new Error('Failed to inject prompt');
   return response.json();
 }
 
 export async function getTranscript(sessionId) {
   const response = await fetch(`${API_BASE}/session/${sessionId}/transcript`);
+  if (!response.ok) throw new Error('Failed to get transcript');
   return response.json();
 }
 
 export function connectWebSocket(sessionId, onMessage) {
-  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-  const ws = new WebSocket(
-    `${protocol}://${window.location.host}/api/session?sessionId=${sessionId}`
-  );
+  // 1. Determine if we need Secure (wss) or Standard (ws)
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  
+  // 2. Use the host from the browser window (handles Codespaces URL automatically)
+  const host = window.location.host;
+
+  // 3. IMPORTANT: Use '/ws' as the path. 
+  // This matches the rule we added to vite.config.js
+  const wsUrl = `${protocol}//${host}/ws?sessionId=${sessionId}`;
+
+  console.log("Connecting to WebSocket:", wsUrl); // Debug log
+
+  const ws = new WebSocket(wsUrl);
 
   ws.onopen = () => {
-    console.log('WebSocket connected');
+    console.log('✅ WebSocket connected successfully!');
   };
 
   ws.onmessage = (event) => {
-    const message = JSON.parse(event.data);
-    onMessage(message);
+    try {
+      const message = JSON.parse(event.data);
+      onMessage(message);
+    } catch (e) {
+      console.error("Error parsing message:", e);
+    }
   };
 
   ws.onerror = (error) => {
-    console.error('WebSocket error:', error);
+    console.error('❌ WebSocket error:', error);
   };
 
-  ws.onclose = () => {
-    console.log('WebSocket disconnected');
+  ws.onclose = (event) => {
+    console.log('⚠️ WebSocket disconnected. Code:', event.code);
   };
 
   return ws;

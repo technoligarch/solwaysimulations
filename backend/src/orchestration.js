@@ -1,33 +1,34 @@
 export class OrchestrationEngine {
-  constructor(agents, scenario, initialPrompt, apiClients) {
-    this.agents = agents; // Array of agent configs with { id, name, model, provider, systemPrompt, color }
+  constructor(agents, scenario, initialPrompt, openRouterClient) {
+    this.agents = agents;
     this.scenario = scenario;
     this.initialPrompt = initialPrompt;
-    this.apiClients = apiClients;
+    this.openRouterClient = openRouterClient;
     this.transcript = [];
     this.isRunning = false;
     this.currentTurnIndex = 0;
     this.godModeQueue = [];
+    this.sessionId = null;
+  }
+
+  setSessionId(id) {
+    this.sessionId = id;
   }
 
   async start() {
     this.isRunning = true;
     this.currentTurnIndex = 0;
 
-    // Add the initial system message
+    // Initial Context
     this.addMessageToTranscript({
       sender: 'system',
-      content: `Scenario: ${this.scenario}`,
+      senderName: 'System',
+      content: `SCENARIO: ${this.scenario}\nINITIAL TOPIC: ${this.initialPrompt}`,
       timestamp: new Date()
     });
 
-    this.addMessageToTranscript({
-      sender: 'system',
-      content: this.initialPrompt,
-      timestamp: new Date()
-    });
+    this.broadcastMessage(this.transcript[0]);
 
-    // Start the autonomous loop
     await this.orchestrationLoop();
   }
 
@@ -37,145 +38,123 @@ export class OrchestrationEngine {
 
   async orchestrationLoop() {
     while (this.isRunning) {
-      // Check for God Mode prompts
+      // 1. Check for God Mode (User Injections)
       if (this.godModeQueue.length > 0) {
         const godPrompt = this.godModeQueue.shift();
-        this.addMessageToTranscript({
+        const godMsg = {
           sender: 'god',
+          senderName: 'God Mode',
+          senderColor: '#FFD700', // Gold
           content: godPrompt,
           timestamp: new Date()
-        });
-        global.broadcastToSession(this.sessionId, {
-          type: 'message',
-          data: this.transcript[this.transcript.length - 1]
-        });
+        };
+        this.addMessageToTranscript(godMsg);
+        this.broadcastMessage(godMsg);
       }
 
-      // Round-robin: each agent takes a turn
+      // 2. Select Speaker
       const agent = this.agents[this.currentTurnIndex % this.agents.length];
 
       try {
-        const response = await this.getAgentResponse(agent);
+        // 3. Get Response
+        const responseText = await this.getAgentResponse(agent);
 
-        this.addMessageToTranscript({
+        const newMessage = {
           sender: agent.id,
           senderName: agent.name,
           senderColor: agent.color,
-          content: response,
+          content: responseText,
           timestamp: new Date()
-        });
+        };
 
-        // Broadcast the new message to all connected clients
-        global.broadcastToSession(this.sessionId, {
-          type: 'message',
-          data: this.transcript[this.transcript.length - 1]
-        });
+        this.addMessageToTranscript(newMessage);
+        this.broadcastMessage(newMessage);
 
         this.currentTurnIndex++;
 
-        // Add a small delay between messages for readability
-        await new Promise(resolve => setTimeout(resolve, 500));
+        // 3 Second Delay (as requested)
+        await new Promise(resolve => setTimeout(resolve, 3000));
+
       } catch (error) {
         console.error(`Error getting response from ${agent.name}:`, error);
-        this.addMessageToTranscript({
-          sender: 'system',
-          content: `[Error: ${agent.name} failed to respond]`,
-          timestamp: new Date()
-        });
+        // Skip turn on error so the whole app doesn't freeze
+        this.currentTurnIndex++; 
       }
     }
   }
 
   async getAgentResponse(agent) {
-    const provider = agent.provider.toLowerCase();
-    const conversationHistory = this.buildConversationHistory();
-    const systemPrompt = agent.systemPrompt;
+    const modelId = this.resolveOpenRouterModelId(agent.model);
+    
+    // --- THE FIX IS HERE ---
+    // Instead of sending raw messages, we compile a clean "Transcript" string.
+    // This prevents the AI from confusing other agents' messages with its own instructions.
+    
+    const otherAgents = this.agents.filter(a => a.id !== agent.id).map(a => a.name).join(", ");
+    
+    const recentHistory = this.transcript
+      .slice(-10) // Only look at last 10 lines to keep focus sharp
+      .map(msg => `${msg.senderName.toUpperCase()}: ${msg.content}`)
+      .join("\n\n");
 
-    if (provider === 'openai') {
-      return await this.getOpenAIResponse(agent, conversationHistory, systemPrompt);
-    } else if (provider === 'anthropic') {
-      return await this.getAnthropicResponse(agent, conversationHistory, systemPrompt);
-    } else if (provider === 'google') {
-      return await this.getGoogleResponse(agent, conversationHistory, systemPrompt);
-    }
+    // We construct one massive "Prompt" that contains everything.
+    // This is safer than the 'messages' array for Multi-Agent consistency.
+    const prompt = `
+You are ${agent.name}.
+Your personality/instructions: ${agent.systemPrompt}
 
-    throw new Error(`Unsupported provider: ${provider}`);
-  }
+You are in a group chat with: ${otherAgents}.
+The current scenario is: ${this.scenario}.
 
-  async getOpenAIResponse(agent, conversationHistory, systemPrompt) {
-    const client = this.apiClients.openai;
-    if (!client) throw new Error('OpenAI client not configured');
+BELOW IS THE CHAT TRANSCRIPT SO FAR.
+Read it, then write YOUR response to the group.
+DO NOT write lines for other people. Only write the text for ${agent.name}.
 
-    const response = await client.chat.completions.create({
-      model: agent.model || 'gpt-4o',
+--- TRANSCRIPT START ---
+${recentHistory}
+--- TRANSCRIPT END ---
+
+(It is now ${agent.name}'s turn. Respond naturally to the last message. Keep it under 2 sentences.)
+    `.trim();
+
+    const completion = await this.openRouterClient.chat.completions.create({
+      model: modelId,
       messages: [
-        { role: 'system', content: systemPrompt },
-        ...conversationHistory,
+        { role: 'user', content: prompt } // We send it all as one "User" block
       ],
-      max_tokens: 150,
       temperature: 0.8,
+      max_tokens: 200,
     });
 
-    return response.choices[0].message.content.trim();
+    // Cleanup: Sometimes models reply "Grok: Hey guys." We want to remove the "Grok:" prefix.
+    let cleanContent = completion.choices[0].message.content.trim();
+    if (cleanContent.startsWith(agent.name + ":")) {
+        cleanContent = cleanContent.replace(agent.name + ":", "").trim();
+    }
+    return cleanContent;
   }
 
-  async getAnthropicResponse(agent, conversationHistory, systemPrompt) {
-    const client = this.apiClients.anthropic;
-    if (!client) throw new Error('Anthropic client not configured');
-
-    const response = await client.messages.create({
-      model: agent.model || 'claude-3-5-sonnet-20241022',
-      max_tokens: 150,
-      system: systemPrompt,
-      messages: conversationHistory,
-    });
-
-    return response.content[0].text.trim();
-  }
-
-  async getGoogleResponse(agent, conversationHistory, systemPrompt) {
-    const client = this.apiClients.google;
-    if (!client) throw new Error('Google client not configured');
-
-    const model = client.getGenerativeModel({
-      model: agent.model || 'gemini-1.5-pro',
-      systemInstruction: systemPrompt,
-    });
-
-    const chat = model.startChat({
-      history: conversationHistory.map(msg => ({
-        role: msg.role,
-        parts: [{ text: msg.content }],
-      })),
-    });
-
-    const response = await chat.sendMessage(
-      conversationHistory.length > 0
-        ? 'Continue the conversation naturally.'
-        : 'Start the conversation naturally.'
-    );
-
-    return response.response.text().trim();
-  }
-
-  buildConversationHistory() {
-    return this.transcript
-      .filter(msg => msg.sender !== 'system')
-      .slice(-20) // Keep last 20 messages for context window
-      .map(msg => {
-        let role = 'user';
-        if (msg.sender === 'god') role = 'user';
-        else if (msg.sender !== 'system') role = 'assistant';
-
-        return {
-          role,
-          content: `${msg.senderName || msg.sender}: ${msg.content}`
-        };
-      });
+  resolveOpenRouterModelId(inputModel) {
+    const model = inputModel.toLowerCase();
+    if (model.includes('/')) return model;
+    if (model.includes('gpt-4')) return 'openai/gpt-4o';
+    if (model.includes('claude')) return 'anthropic/claude-3-haiku';
+    if (model.includes('gemini')) return 'google/gemini-1.5-flash';
+    if (model.includes('grok')) return 'x-ai/grok-2-1212';
+    return 'openai/gpt-4o';
   }
 
   addMessageToTranscript(message) {
     this.transcript.push(message);
+  }
+
+  broadcastMessage(message) {
+    if (this.sessionId && global.broadcastToSession) {
+      global.broadcastToSession(this.sessionId, {
+        type: 'message',
+        data: message
+      });
+    }
   }
 
   injectGodModePrompt(prompt) {
@@ -184,19 +163,5 @@ export class OrchestrationEngine {
 
   getTranscript() {
     return this.transcript;
-  }
-
-  exportTranscript(format = 'json') {
-    if (format === 'json') {
-      return JSON.stringify(this.transcript, null, 2);
-    } else if (format === 'txt') {
-      return this.transcript
-        .map(msg => `[${msg.senderName || msg.sender}]: ${msg.content}`)
-        .join('\n\n');
-    }
-  }
-
-  setSessionId(sessionId) {
-    this.sessionId = sessionId;
   }
 }
