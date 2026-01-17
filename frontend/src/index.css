@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-slate-950 text-white font-sans;
+}
+
+.message-bubble {
+  @apply rounded-lg px-4 py-2 max-w-xs;
+}
+
+.message-bubble.user {
+  @apply bg-brand text-white ml-auto;
+}
+
+.message-bubble.agent {
+  @apply bg-slate-800 text-slate-100;
+}
+
+.message-bubble.god {
+  @apply border-2 border-yellow-500 bg-slate-800 text-yellow-300 text-center mx-auto;
+}
+
+.message-bubble.system {
+  @apply bg-slate-700 text-slate-400 text-sm italic text-center mx-auto;
+}
