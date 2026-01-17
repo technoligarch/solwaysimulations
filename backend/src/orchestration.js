@@ -1,5 +1,6 @@
 export class OrchestrationEngine {
-  constructor(agents, scenario, initialPrompt, openRouterClient) {
+  constructor(agents, scenario, initialPrompt, openRouterClient, toolbox) {
+    this.toolbox = toolbox; // 
     this.agents = agents;
     this.scenario = scenario;
     this.initialPrompt = initialPrompt;
