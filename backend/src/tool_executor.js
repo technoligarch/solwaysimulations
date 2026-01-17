@@ -21,7 +21,7 @@ export async function search(query) {
   try {
     const searchResponse = await tavilyClient.search(query, {
       searchDepth: 'basic', // 'basic' is fast and cheap, 'advanced' is for deep research
-      maxResults: 3, // We'll get 3 search results to summarize
+      maxResults: 5, // We'll get 5 search results to summarize
     });
 
     // We will just return the main answer from Tavily for now, it's very clean.
