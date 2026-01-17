@@ -64,7 +64,17 @@ export function connectWebSocket(sessionId, onMessage) {
   ws.onmessage = (event) => {
     try {
       const message = JSON.parse(event.data);
-      onMessage(message);
+
+      // V2: Check the message type and call the correct store action
+      if (message.type === 'status_update') {
+        // This is a new message type for "is thinking..."
+        // We get the setAgentStatus function from our onMessage object
+        onMessage.setAgentStatus(message.data.agentId, message.data.status);
+      } else {
+        // This is a regular turn/message
+        onMessage.addTurnData(message.data);
+      }
+
     } catch (e) {
       console.error("Error parsing message:", e);
     }
