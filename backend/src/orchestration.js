@@ -1,10 +1,10 @@
 export class OrchestrationEngine {
   constructor(agents, scenario, initialPrompt, openRouterClient, toolbox) {
-    this.toolbox = toolbox; // 
     this.agents = agents;
     this.scenario = scenario;
     this.initialPrompt = initialPrompt;
     this.openRouterClient = openRouterClient;
+    this.toolbox = toolbox; // V2: Toolbox with functions like search()
     this.transcript = [];
     this.isRunning = false;
     this.currentTurnIndex = 0;
@@ -20,16 +20,17 @@ export class OrchestrationEngine {
     this.isRunning = true;
     this.currentTurnIndex = 0;
 
-    // Initial Context
-    this.addMessageToTranscript({
-      sender: 'system',
+    // Add the initial system message to the transcript
+    const initialMessage = {
+      type: 'system_message',
       senderName: 'System',
       content: `SCENARIO: ${this.scenario}\nINITIAL TOPIC: ${this.initialPrompt}`,
       timestamp: new Date()
-    });
+    };
+    this.addMessageToTranscript(initialMessage);
+    this.broadcastMessage(initialMessage);
 
-    this.broadcastMessage(this.transcript[0]);
-
+    // Start the autonomous loop
     await this.orchestrationLoop();
   }
 
@@ -37,104 +38,164 @@ export class OrchestrationEngine {
     this.isRunning = false;
   }
 
+  // =================================================================
+  // V2 CORE LOGIC: THINK -> ACT -> SPEAK CYCLE
+  // =================================================================
+
   async orchestrationLoop() {
     while (this.isRunning) {
-      // 1. Check for God Mode (User Injections)
+      // 1. Handle any user-injected "God Mode" prompts first
       if (this.godModeQueue.length > 0) {
         const godPrompt = this.godModeQueue.shift();
-        const godMsg = {
-          sender: 'god',
-          senderName: 'God Mode',
-          senderColor: '#FFD700', // Gold
-          content: godPrompt,
-          timestamp: new Date()
+        const godMsg = { 
+            type: 'god_mode',
+            senderName: 'God Mode', 
+            content: godPrompt,
+            timestamp: new Date()
         };
         this.addMessageToTranscript(godMsg);
         this.broadcastMessage(godMsg);
       }
 
-      // 2. Select Speaker
+      // 2. Select the current agent
       const agent = this.agents[this.currentTurnIndex % this.agents.length];
+      console.log(`\n--- Turn ${this.currentTurnIndex + 1}: ${agent.name}'s turn ---`);
+      
+      this.broadcastStatus(agent.id, 'thinking');
 
       try {
-        // 3. Get Response
-        const responseText = await this.getAgentResponse(agent);
+        // STEP 1: THINK PHASE (Generate private thought and action plan)
+        console.log(`[${agent.name}] is thinking...`);
+        const thinkResponse = await this.runThinkPhase(agent);
+        
+        let toolResult = null;
+        let toolUsed = null;
 
-        const newMessage = {
-          sender: agent.id,
+        // STEP 2: ACT PHASE (Execute a tool, if planned)
+        if (thinkResponse.action && thinkResponse.action.tool_name) {
+          toolUsed = thinkResponse.action.tool_name;
+          console.log(`[${agent.name}] is acting with tool: ${toolUsed}`);
+          this.broadcastStatus(agent.id, `using ${toolUsed}`);
+
+          toolResult = await this.executeTool(
+            thinkResponse.action.tool_name,
+            thinkResponse.action.tool_input
+          );
+        } else {
+          console.log(`[${agent.name}] chose not to use a tool.`);
+        }
+
+        // STEP 3: SPEAK PHASE (Generate public message based on new info)
+        console.log(`[${agent.name}] is speaking...`);
+        this.broadcastStatus(agent.id, 'speaking');
+        const publicMessage = await this.runSpeakPhase(agent, thinkResponse.thought, toolResult);
+
+        // 4. Record the full turn and broadcast it
+        const newTurnData = {
+          type: 'agent_turn',
+          senderId: agent.id,
           senderName: agent.name,
           senderColor: agent.color,
-          content: responseText,
-          timestamp: new Date()
+          publicMessage: publicMessage,
+          privateThought: thinkResponse.thought,
+          toolUsed: toolUsed,
+          toolResult: toolResult,
+          timestamp: new Date(),
         };
 
-        this.addMessageToTranscript(newMessage);
-        this.broadcastMessage(newMessage);
+        this.addMessageToTranscript(newTurnData);
+        this.broadcastMessage(newTurnData);
 
         this.currentTurnIndex++;
-
-        // 3 Second Delay (as requested)
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        await new Promise(resolve => setTimeout(resolve, 3000)); // 3-second delay
 
       } catch (error) {
-        console.error(`Error getting response from ${agent.name}:`, error);
-        // Skip turn on error so the whole app doesn't freeze
-        this.currentTurnIndex++; 
+        console.error(`[OrchestrationEngine] Critical error during ${agent.name}'s turn:`, error);
+        const errorMsg = {
+          type: 'error',
+          senderName: 'System',
+          content: `[Error: ${agent.name} failed its turn. Skipping ahead.]`,
+        };
+        this.addMessageToTranscript(errorMsg);
+        this.broadcastMessage(errorMsg);
+        this.currentTurnIndex++; // Skip the broken agent's turn
       }
     }
   }
 
-  async getAgentResponse(agent) {
-    const modelId = this.resolveOpenRouterModelId(agent.model);
+  /**
+   * Asks the LLM to generate a private thought and an action plan.
+   * Must return a JSON object with "thought" and "action".
+   */
+  async runThinkPhase(agent) {
+    const history = this.buildConversationHistory();
+    const thinkPrompt = `Based on the conversation history, what is your private thought and what action will you take? You have one tool available: search(query). If you don't need a tool, set 'action' to null. Respond ONLY with a valid JSON object.`;
     
-    // --- THE FIX IS HERE ---
-    // Instead of sending raw messages, we compile a clean "Transcript" string.
-    // This prevents the AI from confusing other agents' messages with its own instructions.
-    
-    const otherAgents = this.agents.filter(a => a.id !== agent.id).map(a => a.name).join(", ");
-    
-    const recentHistory = this.transcript
-      .slice(-10) // Only look at last 10 lines to keep focus sharp
-      .map(msg => `${msg.senderName.toUpperCase()}: ${msg.content}`)
-      .join("\n\n");
-
-    // We construct one massive "Prompt" that contains everything.
-    // This is safer than the 'messages' array for Multi-Agent consistency.
-    const prompt = `
-You are ${agent.name}.
-Your personality/instructions: ${agent.systemPrompt}
-
-You are in a group chat with: ${otherAgents}.
-The current scenario is: ${this.scenario}.
-
-BELOW IS THE CHAT TRANSCRIPT SO FAR.
-Read it, then write YOUR response to the group.
-DO NOT write lines for other people. Only write the text for ${agent.name}.
-
---- TRANSCRIPT START ---
-${recentHistory}
---- TRANSCRIPT END ---
-
-(It is now ${agent.name}'s turn. Respond naturally to the last message. Keep it under 2 sentences.)
-    `.trim();
-
-    const completion = await this.openRouterClient.chat.completions.create({
-      model: modelId,
+    const response = await this.openRouterClient.chat.completions.create({
+      model: this.resolveOpenRouterModelId(agent.model),
       messages: [
-        { role: 'user', content: prompt } // We send it all as one "User" block
+        { role: 'system', content: agent.systemPrompt },
+        ...history,
+        { role: 'user', content: thinkPrompt },
       ],
-      temperature: 0.8,
-      max_tokens: 200,
+      response_format: { type: 'json_object' },
     });
-
-    // Cleanup: Sometimes models reply "Grok: Hey guys." We want to remove the "Grok:" prefix.
-    let cleanContent = completion.choices[0].message.content.trim();
-    if (cleanContent.startsWith(agent.name + ":")) {
-        cleanContent = cleanContent.replace(agent.name + ":", "").trim();
+    
+    const rawJSON = response.choices[0].message.content;
+    try {
+      return JSON.parse(rawJSON);
+    } catch (e) {
+      console.error("Failed to parse JSON from think phase:", rawJSON);
+      return { thought: "I failed to think correctly and output valid JSON.", action: null };
     }
-    return cleanContent;
   }
 
+  /**
+   * Executes a tool from the toolbox.
+   */
+  async executeTool(toolName, toolInput) {
+    if (this.toolbox[toolName]) {
+      return await this.toolbox[toolName](toolInput);
+    }
+    return `Error: Tool "${toolName}" not found.`;
+  }
+
+  /**
+   * Asks the LLM to generate a public message based on its thoughts and tool results.
+   */
+  async runSpeakPhase(agent, thought, toolResult) {
+    const history = this.buildConversationHistory();
+    let speakPrompt = `Your private thought was: "${thought}".\n`;
+    if (toolResult) {
+      speakPrompt += `You used a tool and got this result: "${toolResult}".\n`;
+    }
+    speakPrompt += `Based on this, what do you say out loud to the group? Keep it concise (1-2 sentences).`;
+
+    const response = await this.openRouterClient.chat.completions.create({
+      model: this.resolveOpenRouterModelId(agent.model),
+      messages: [
+        { role: 'system', content: agent.systemPrompt },
+        ...history,
+        { role: 'user', content: speakPrompt },
+      ],
+    });
+
+    return response.choices[0].message.content.trim();
+  }
+
+  /**
+   * Builds the conversation history for the LLM context.
+   */
+  buildConversationHistory() {
+    return this.transcript
+      .filter(msg => msg.type === 'agent_turn' || msg.type === 'god_mode') // Agents should remember God Mode prompts
+      .slice(-20) // AGENT MEMORY: Increased to 20 turns as requested
+      .map(msg => ({
+        role: 'user', // Treat all past messages as user input for context
+        content: `${msg.senderName}: ${msg.publicMessage || msg.content}`,
+      }));
+  }
+  
   resolveOpenRouterModelId(inputModel) {
     const model = inputModel.toLowerCase();
     if (model.includes('/')) return model;
@@ -142,7 +203,7 @@ ${recentHistory}
     if (model.includes('claude')) return 'anthropic/claude-3-haiku';
     if (model.includes('gemini')) return 'google/gemini-1.5-flash';
     if (model.includes('grok')) return 'x-ai/grok-2-1212';
-    return 'openai/gpt-4o';
+    return 'openai/gpt-4o'; // Default fallback
   }
 
   addMessageToTranscript(message) {
@@ -152,8 +213,17 @@ ${recentHistory}
   broadcastMessage(message) {
     if (this.sessionId && global.broadcastToSession) {
       global.broadcastToSession(this.sessionId, {
-        type: 'message',
+        type: 'message', // This might need to be more specific later
         data: message
+      });
+    }
+  }
+  
+  broadcastStatus(agentId, status) {
+    if (this.sessionId && global.broadcastToSession) {
+      global.broadcastToSession(this.sessionId, {
+        type: 'status_update',
+        data: { agentId, status }
       });
     }
   }
