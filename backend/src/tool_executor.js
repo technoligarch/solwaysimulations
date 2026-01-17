@@ -1,15 +1,13 @@
-import { TavilyClient } from 'tavily-node';
-import 'dotenv/config';
+import { tavily } from '@tavily/core';
 
-// Initialize the Tavily client with your API key from the .env file
-const tavilyClient = new TavilyClient({
+// Initialize the Tavily client with your API key
+// This syntax is based on the official documentation
+const tavilyClient = new tavily({
   apiKey: process.env.TAVILY_API_KEY,
 });
 
 /**
  * A tool that searches the internet for a given query using Tavily.
- * @param {string} query - The search query.
- * @returns {Promise<string>} A summary of the search results.
  */
 export async function search(query) {
   if (!query) {
@@ -19,12 +17,14 @@ export async function search(query) {
   console.log(`[Toolbox] TOOL CALLED: search() with query: "${query}"`);
 
   try {
+    // We use the .search method as shown in the docs
     const searchResponse = await tavilyClient.search(query, {
-      searchDepth: 'basic', // 'basic' is fast and cheap, 'advanced' is for deep research
-      maxResults: 5, // We'll get 5 search results to summarize
+      searchDepth: 'basic',
+      maxResults: 5,
     });
 
-    // We will just return the main answer from Tavily for now, it's very clean.
+    // The docs show the response is the direct result, let's format it.
+    // Tavily often includes an 'answer' for summarization.
     const conciseResult = searchResponse.answer || JSON.stringify(searchResponse.results);
     
     console.log(`[Toolbox] TOOL RESULT: ${conciseResult.substring(0, 100)}...`);

@@ -1,15 +1,16 @@
+import dotenv from 'dotenv';
+// Force load the .env file from the current directory
+dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+
 import express from 'express';
 import cors from 'cors';
 import { WebSocketServer } from 'ws';
 import { createServer } from 'http';
 import { OrchestrationEngine } from './orchestration.js';
-import { search } from './src/tool_executor.js';
+import { search } from './tool_executor.js';
 import OpenAI from 'openai';
-import dotenv from 'dotenv';
 import path from 'path';
 
-// Force load the .env file from the current directory
-dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
 const app = express();
 const server = createServer(app);

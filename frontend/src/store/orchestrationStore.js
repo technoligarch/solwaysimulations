@@ -1,44 +1,57 @@
 import { create } from 'zustand';
 
-export const useOrchestrationStore = create((set) => ({
+export const useOrchestrationStore = create((set, get) => ({
+  // =================================================================
+  // STATE: The "memory" of our application
+  // =================================================================
   sessionId: null,
-  agents: [],
-  transcript: [],
-  isRunning: false,
   scenario: '',
   initialPrompt: '',
-  apiKeys: {
-    openai: '',
-    anthropic: '',
-    google: '',
+  agents: [],
+  transcript: [], // Will now store the full V2 turn objects { publicMessage, privateThought, ... }
+  isRunning: false,
+  agentStatuses: {}, // V2: Tracks what each agent is doing, e.g., { agent_1: 'thinking' }
+
+  // =================================================================
+  // ACTIONS: Functions that change the state
+  // =================================================================
+  setSessionId: (id) => set({ sessionId: id }),
+  setScenario: (name) => set({ scenario: name }),
+  setInitialPrompt: (prompt) => set({ initialPrompt: prompt }),
+  setAgents: (agents) => set({ agents }),
+  setIsRunning: (running) => set({ isRunning: running }),
+
+  // V2: This action now handles the complex turn data from the backend
+  addTurnData: (turnData) => {
+    // When a full turn arrives, we clear the status for that agent
+    const agentId = turnData.senderId;
+    const newStatuses = { ...get().agentStatuses };
+    delete newStatuses[agentId];
+
+    set((state) => ({
+      transcript: [...state.transcript, turnData],
+      agentStatuses: newStatuses,
+    }));
   },
 
-  // Session actions
-  setSessionId: (sessionId) => set({ sessionId }),
-  setAgents: (agents) => set({ agents }),
-  setTranscript: (transcript) => set({ transcript }),
-  setIsRunning: (isRunning) => set({ isRunning }),
-  setScenario: (scenario) => set({ scenario }),
-  setInitialPrompt: (initialPrompt) => set({ initialPrompt }),
+  // V2: This new action handles simple status messages like "thinking" or "searching"
+  setAgentStatus: (agentId, status) => {
+    // Don't show "speaking" as it's too fast to be useful
+    if (status === 'speaking') return;
 
-  // Transcript actions
-  addMessage: (message) =>
     set((state) => ({
-      transcript: [...state.transcript, message],
-    })),
+      agentStatuses: { ...state.agentStatuses, [agentId]: status },
+    }));
+  },
 
-  // API keys
-  setApiKeys: (apiKeys) => set({ apiKeys }),
-  updateApiKey: (provider, key) =>
-    set((state) => ({
-      apiKeys: { ...state.apiKeys, [provider]: key },
-    })),
-
-  // Reset
-  resetSession: () =>
+  // Resets the entire state when the user starts a new simulation
+  reset: () =>
     set({
       sessionId: null,
+      scenario: '',
+      initialPrompt: '',
       transcript: [],
       isRunning: false,
+      agentStatuses: {},
     }),
 }));

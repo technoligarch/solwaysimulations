@@ -46,14 +46,11 @@ export default function SetupPage({ onSetupComplete }) {
       setScenario(selectedScenario.name);
       setInitialPrompt(selectedScenario.initialPrompt);
 
-      // Connect WebSocket
-      connectWebSocket(newSessionId, (message) => {
-        if (message.type === 'message') {
-          addMessage(message.data);
-        } else if (message.type === 'status') {
-          setIsRunning(message.data.status === 'running');
-        }
-      });
+      // Get the actions directly from the store
+const { addTurnData, setAgentStatus } = useOrchestrationStore.getState();
+
+// Pass them to the WebSocket connection
+connectWebSocket(newSessionId, { addTurnData, setAgentStatus });
 
       // Start the session
       await startSession(newSessionId);
