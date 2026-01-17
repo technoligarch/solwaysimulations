@@ -3,6 +3,7 @@ import cors from 'cors';
 import { WebSocketServer } from 'ws';
 import { createServer } from 'http';
 import { OrchestrationEngine } from './orchestration.js';
+import { search } from './src/tool_executor.js';
 import OpenAI from 'openai';
 import dotenv from 'dotenv';
 import path from 'path';
@@ -54,12 +55,17 @@ app.post('/api/session/create', (req, res) => {
   const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
   // We pass the single openRouterClient to the engine now
+  // V2: Create a toolbox object to pass to the engine
+  const toolbox = {
+    search: search,
+  };
   const engine = new OrchestrationEngine(
-    agents,
-    scenario,
-    initialPrompt,
-    openRouterClient
-  );
+  agents,
+  scenario,
+  initialPrompt,
+  openRouterClient,
+  toolbox // <-- ADDED THIS LINE
+);
 
   sessions.set(sessionId, engine); 
   engine.setSessionId(sessionId); // Vital fix for live messages
