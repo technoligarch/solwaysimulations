@@ -9,9 +9,8 @@ export const useOrchestrationStore = create((set) => ({
   scenario: '',
   initialPrompt: '',
   apiKeys: {
-    openai: '',
-    anthropic: '',
-    google: '',
+    openrouter: '',
+    tavily: '',
   },
 
   // Session actions

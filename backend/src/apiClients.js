@@ -1,44 +1,33 @@
 import OpenAI from 'openai';
-import Anthropic from 'anthropic';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export function loadApiClients() {
-  const clients = {};
-
-  // Load OpenAI
-  if (process.env.OPENAI_API_KEY) {
-    clients.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
+  if (!process.env.OPENROUTER_API_KEY) {
+    console.warn('Warning: OPENROUTER_API_KEY not set. LLM calls will fail.');
   }
 
-  // Load Anthropic
-  if (process.env.ANTHROPIC_API_KEY) {
-    clients.anthropic = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-    });
-  }
+  const client = new OpenAI({
+    apiKey: process.env.OPENROUTER_API_KEY,
+    baseURL: 'https://openrouter.ai/api/v1',
+    defaultHeaders: {
+      'HTTP-Referer': 'https://github.com/technoligarch/solwaysimulations',
+    },
+  });
 
-  // Load Google
-  if (process.env.GOOGLE_API_KEY) {
-    clients.google = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
-  }
-
-  return clients;
+  return { openrouter: client };
 }
 
 export function validateApiKeys(apiKeys) {
-  const validated = {};
-
-  if (apiKeys.openai) {
-    validated.openai = new OpenAI({ apiKey: apiKeys.openai });
-  }
-  if (apiKeys.anthropic) {
-    validated.anthropic = new Anthropic({ apiKey: apiKeys.anthropic });
-  }
-  if (apiKeys.google) {
-    validated.google = new GoogleGenerativeAI(apiKeys.google);
+  if (!apiKeys.openrouter) {
+    throw new Error('OpenRouter API key is required');
   }
 
-  return validated;
+  return {
+    openrouter: new OpenAI({
+      apiKey: apiKeys.openrouter,
+      baseURL: 'https://openrouter.ai/api/v1',
+      defaultHeaders: {
+        'HTTP-Referer': 'https://github.com/technoligarch/solwaysimulations',
+      },
+    }),
+  };
 }

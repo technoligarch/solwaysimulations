@@ -2,9 +2,8 @@ import { useState } from 'react';
 
 export default function ApiKeySettings({ onConfirm }) {
   const [keys, setKeys] = useState({
-    openai: localStorage.getItem('openai_key') || '',
-    anthropic: localStorage.getItem('anthropic_key') || '',
-    google: localStorage.getItem('google_key') || '',
+    openrouter: localStorage.getItem('openrouter_key') || '',
+    tavily: localStorage.getItem('tavily_key') || '',
   });
 
   const handleKeyChange = (provider, value) => {
@@ -13,9 +12,8 @@ export default function ApiKeySettings({ onConfirm }) {
 
   const handleConfirm = () => {
     // Save to local storage
-    if (keys.openai) localStorage.setItem('openai_key', keys.openai);
-    if (keys.anthropic) localStorage.setItem('anthropic_key', keys.anthropic);
-    if (keys.google) localStorage.setItem('google_key', keys.google);
+    if (keys.openrouter) localStorage.setItem('openrouter_key', keys.openrouter);
+    if (keys.tavily) localStorage.setItem('tavily_key', keys.tavily);
 
     onConfirm(keys);
   };
@@ -23,40 +21,31 @@ export default function ApiKeySettings({ onConfirm }) {
   return (
     <div>
       <h2 className="text-2xl font-bold mb-4">Add API Keys</h2>
-      <p className="text-slate-400 mb-6">Provide your LLM provider API keys. They are stored locally and not sent to servers.</p>
+      <p className="text-slate-400 mb-6">Provide your OpenRouter API key (required) and optionally a Tavily API key for web search. Keys are stored locally and not sent to servers.</p>
 
       <div className="space-y-4 mb-6">
         <div>
-          <label className="text-sm font-semibold text-slate-400">OpenAI API Key (optional)</label>
+          <label className="text-sm font-semibold text-slate-400">OpenRouter API Key (required)</label>
           <input
             type="password"
-            value={keys.openai}
-            onChange={(e) => handleKeyChange('openai', e.target.value)}
-            placeholder="sk-..."
+            value={keys.openrouter}
+            onChange={(e) => handleKeyChange('openrouter', e.target.value)}
+            placeholder="sk-or-v1-..."
             className="w-full bg-slate-800 text-white px-3 py-2 rounded mt-1 border border-slate-600"
           />
+          <p className="text-xs text-slate-500 mt-1">Get your key from https://openrouter.ai</p>
         </div>
 
         <div>
-          <label className="text-sm font-semibold text-slate-400">Anthropic API Key (optional)</label>
+          <label className="text-sm font-semibold text-slate-400">Tavily API Key (optional)</label>
           <input
             type="password"
-            value={keys.anthropic}
-            onChange={(e) => handleKeyChange('anthropic', e.target.value)}
-            placeholder="sk-ant-..."
+            value={keys.tavily}
+            onChange={(e) => handleKeyChange('tavily', e.target.value)}
+            placeholder="tvly-..."
             className="w-full bg-slate-800 text-white px-3 py-2 rounded mt-1 border border-slate-600"
           />
-        </div>
-
-        <div>
-          <label className="text-sm font-semibold text-slate-400">Google API Key (optional)</label>
-          <input
-            type="password"
-            value={keys.google}
-            onChange={(e) => handleKeyChange('google', e.target.value)}
-            placeholder="AIza..."
-            className="w-full bg-slate-800 text-white px-3 py-2 rounded mt-1 border border-slate-600"
-          />
+          <p className="text-xs text-slate-500 mt-1">Optional - enables web search. Get your key from https://tavily.com</p>
         </div>
       </div>
 
