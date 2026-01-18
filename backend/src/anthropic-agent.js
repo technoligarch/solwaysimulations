@@ -10,10 +10,13 @@ import Anthropic from '@anthropic-ai/sdk';
  */
 export class AnthropicAgentRunner {
   constructor(toolbox, options = {}) {
+    if (!process.env.ANTHROPIC_API_KEY) {
+      console.warn('Warning: ANTHROPIC_API_KEY not set. Anthropic agent calls will fail.');
+    }
     this.client = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY,
+      apiKey: process.env.ANTHROPIC_API_KEY || 'missing-key',
     });
-    this.toolbox = toolbox;
+    this.toolbox = toolbox || {};
     this.maxIterations = options.maxIterations || 10;
     this.onToolUse = options.onToolUse || null; // Callback for tool use events
     this.onThinking = options.onThinking || null; // Callback for thinking events
@@ -157,29 +160,32 @@ export class AnthropicAgentRunner {
    */
   getModelId(modelString) {
     // Handle various model string formats
+    // Use known-working model IDs
     const modelMap = {
       'anthropic/claude-3-opus': 'claude-3-opus-20240229',
       'anthropic/claude-3-sonnet': 'claude-3-sonnet-20240229',
       'anthropic/claude-3-haiku': 'claude-3-haiku-20240307',
-      'anthropic/claude-3.5-sonnet': 'claude-sonnet-4-20250514',
-      'anthropic/claude-3-5-sonnet': 'claude-sonnet-4-20250514',
+      'anthropic/claude-3.5-sonnet': 'claude-3-5-sonnet-20241022',
+      'anthropic/claude-3-5-sonnet': 'claude-3-5-sonnet-20241022',
+      'anthropic/claude-3.5-haiku': 'claude-3-5-haiku-20241022',
       'anthropic/claude-sonnet-4': 'claude-sonnet-4-20250514',
       'anthropic/claude-opus-4': 'claude-opus-4-20250514',
       'claude-3-opus': 'claude-3-opus-20240229',
       'claude-3-sonnet': 'claude-3-sonnet-20240229',
       'claude-3-haiku': 'claude-3-haiku-20240307',
-      'claude-3.5-sonnet': 'claude-sonnet-4-20250514',
-      'claude-3-5-sonnet': 'claude-sonnet-4-20250514',
+      'claude-3.5-sonnet': 'claude-3-5-sonnet-20241022',
+      'claude-3-5-sonnet': 'claude-3-5-sonnet-20241022',
+      'claude-3.5-haiku': 'claude-3-5-haiku-20241022',
       'claude-sonnet-4': 'claude-sonnet-4-20250514',
       'claude-opus-4': 'claude-opus-4-20250514',
     };
 
-    // Check if it's already a valid model ID
+    // Check if it's already a valid model ID (has date suffix)
     if (modelString?.startsWith('claude-') && modelString.includes('-202')) {
       return modelString;
     }
 
-    return modelMap[modelString] || 'claude-sonnet-4-20250514';
+    return modelMap[modelString] || 'claude-3-5-sonnet-20241022';
   }
 
   /**
@@ -193,26 +199,37 @@ export class AnthropicAgentRunner {
 }
 
 /**
- * Convert OpenAI-style messages to Anthropic format
+ * Convert transcript to Anthropic message format
+ *
+ * Anthropic requires alternating user/assistant messages.
+ * We bundle the entire conversation history into a single user message
+ * to avoid the alternating message constraint.
  */
 export function convertToAnthropicMessages(transcript) {
-  const messages = [];
+  if (!transcript || transcript.length === 0) {
+    return [];
+  }
+
+  // Build a formatted conversation history
+  const historyLines = [];
 
   for (const entry of transcript) {
     if (entry.type === 'agent_turn') {
-      // Previous agent messages become user context
-      messages.push({
-        role: 'user',
-        content: `${entry.senderName}: ${entry.publicMessage}`,
-      });
+      historyLines.push(`${entry.senderName}: ${entry.publicMessage}`);
     } else if (entry.type === 'god_mode') {
-      // Director instructions become user messages with special formatting
-      messages.push({
-        role: 'user',
-        content: `[DIRECTOR INSTRUCTION]: ${entry.content} (IGNORE PREVIOUS TOPIC, ADDRESS THIS NOW)`,
-      });
+      historyLines.push(`[DIRECTOR INSTRUCTION]: ${entry.content}`);
     }
   }
 
-  return messages;
+  if (historyLines.length === 0) {
+    return [];
+  }
+
+  // Return as a single user message with the full context
+  return [
+    {
+      role: 'user',
+      content: `Here is the conversation so far:\n\n${historyLines.join('\n\n')}\n\nNow it's your turn to respond.`,
+    },
+  ];
 }
