@@ -22,20 +22,14 @@ const tools = {
     execute: async ({ query }) => {
       try {
         if (!process.env.TAVILY_API_KEY) {
-          console.warn('TAVILY_API_KEY missing, skipping search.');
-          return 'Error: Search unavailable (Key missing).';
+          return 'Error: TAVILY_API_KEY not configured on server.';
         }
-        
-        // Create client with the key
         const tvly = tavily({ apiKey: process.env.TAVILY_API_KEY });
-        
-        // Execute search
         const result = await tvly.search(query, {
           search_depth: 'basic',
           max_results: 3,
         });
         
-        // Format results
         return result.results
           .map((r) => `Title: ${r.title}\nContent: ${r.content}`)
           .join('\n\n');
