@@ -1,15 +1,25 @@
+import { AnthropicAgentRunner, convertToAnthropicMessages } from './anthropic-agent.js';
+
 export class OrchestrationEngine {
   constructor(agents, scenario, initialPrompt, apiClients, toolbox) {
-    this.agents = agents; 
+    this.agents = agents;
     this.scenario = scenario;
     this.initialPrompt = initialPrompt;
-    this.apiClients = apiClients; 
+    this.apiClients = apiClients;
     this.toolbox = toolbox; // Contains web_search definition and execution logic
-    
+
     this.sessionId = null;
     this.isRunning = false;
     this.transcript = [];
-    this.agentStatuses = {}; 
+    this.agentStatuses = {};
+
+    // Initialize Anthropic agent runner for Claude models
+    this.anthropicRunner = new AnthropicAgentRunner(toolbox, {
+      maxIterations: 5,
+      onToolUse: (toolName, input) => {
+        console.log(`[Anthropic] Tool called: ${toolName}`, input);
+      },
+    });
   }
 
   setSessionId(id) {
@@ -80,8 +90,89 @@ export class OrchestrationEngine {
   }
 
   async handleAgentTurn(agent) {
-    this.updateStatus(agent.id, 'thinking'); 
-    
+    this.updateStatus(agent.id, 'thinking');
+
+    const model = agent.model || 'openai/gpt-4o';
+
+    // Route to appropriate handler based on model
+    if (AnthropicAgentRunner.isAnthropicModel(model)) {
+      await this.handleAnthropicAgentTurn(agent);
+    } else {
+      await this.handleOpenRouterAgentTurn(agent);
+    }
+  }
+
+  /**
+   * Handle turn for Anthropic/Claude models using native Agent SDK
+   */
+  async handleAnthropicAgentTurn(agent) {
+    try {
+      // Build system prompt for Anthropic
+      const systemPrompt = `You are ${agent.name}. ${agent.systemPrompt}
+
+Current Scenario: ${this.scenario}
+Original Topic: ${this.initialPrompt}
+
+${agent.secretInstruction || ''}
+
+IMPORTANT RULES:
+1. Keep response to 10-20 words maximum.
+2. If you need current facts or news to win an argument, USE THE web_search TOOL.
+3. If the Director gives an instruction, obey immediately.`;
+
+      // Convert transcript to Anthropic message format
+      const messages = convertToAnthropicMessages(
+        this.transcript.filter(t => t.type === 'agent_turn' || t.type === 'god_mode')
+      );
+
+      // Ensure we have at least one message (Anthropic requires non-empty messages)
+      if (messages.length === 0) {
+        messages.push({
+          role: 'user',
+          content: 'The conversation is starting. Please introduce yourself and share your initial thoughts on the topic.',
+        });
+      }
+
+      // Update status when tools are being used
+      const originalOnToolUse = this.anthropicRunner.onToolUse;
+      this.anthropicRunner.onToolUse = (toolName, input) => {
+        this.updateStatus(agent.id, 'acting');
+        console.log(`${agent.name} is calling tool: ${toolName}`);
+        if (originalOnToolUse) originalOnToolUse(toolName, input);
+      };
+
+      // Run the agentic loop
+      const result = await this.anthropicRunner.run(agent, systemPrompt, messages);
+
+      this.updateStatus(agent.id, 'speaking');
+
+      // Format tool data for frontend if tools were used
+      let toolData = null;
+      if (result.toolsUsed.length > 0) {
+        const lastTool = result.toolsUsed[result.toolsUsed.length - 1];
+        toolData = {
+          name: lastTool.name,
+          query: lastTool.input?.query || JSON.stringify(lastTool.input),
+          result: lastTool.result,
+        };
+      }
+
+      // Add the agent's message
+      this.addAgentMessage(agent, result.text, null, toolData);
+
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      this.updateStatus(agent.id, null);
+
+    } catch (err) {
+      console.error(`Anthropic agent call failed for ${agent.name}:`, err);
+      this.updateStatus(agent.id, 'error');
+    }
+  }
+
+  /**
+   * Handle turn for OpenRouter/other models (existing logic)
+   */
+  async handleOpenRouterAgentTurn(agent) {
     const messages = this.buildPrompt(agent);
     const client = this.apiClients.openrouter;
     const model = agent.model || 'openai/gpt-4o';
@@ -106,7 +197,7 @@ export class OrchestrationEngine {
       if (message.tool_calls && message.tool_calls.length > 0) {
         const toolCall = message.tool_calls[0]; // Handle the first tool call
         const functionName = toolCall.function.name;
-        
+
         // Update status to show user we are searching
         this.updateStatus(agent.id, 'acting'); // "Acting" = Searching
         console.log(`${agent.name} is calling tool: ${functionName}`);
@@ -120,16 +211,16 @@ export class OrchestrationEngine {
           toolData = {
             name: functionName,
             query: args.query,
-            result: toolResult
+            result: toolResult,
           };
 
           // 3. Second Call: Feed results back to LLM to get the speech
           // Add the tool usage history to the messages
-          messages.push(message); 
+          messages.push(message);
           messages.push({
             role: 'tool',
             tool_call_id: toolCall.id,
-            content: toolResult
+            content: toolResult,
           });
 
           // Ask for the final response based on the search results
@@ -141,14 +232,14 @@ export class OrchestrationEngine {
           finalContent = secondCompletion.choices[0].message.content;
         }
       }
-      
+
       this.updateStatus(agent.id, 'speaking');
-      
+
       // 4. Speak Phase (Send message + tool data if it exists)
       this.addAgentMessage(agent, finalContent, null, toolData);
-      
+
       await new Promise(resolve => setTimeout(resolve, 2000));
-      this.updateStatus(agent.id, null); 
+      this.updateStatus(agent.id, null);
 
     } catch (err) {
       console.error(`LLM Call failed for ${agent.name}:`, err);
