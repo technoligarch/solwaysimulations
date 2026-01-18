@@ -2,10 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-* {
-  @apply dark;
-}
-
 body {
   @apply bg-slate-950 text-white font-sans;
 }
