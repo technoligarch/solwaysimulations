@@ -24,9 +24,31 @@ export class OrchestrationEngine {
     if (this.isRunning) return;
     this.isRunning = true;
     console.log(`Starting session ${this.sessionId}`);
+
+    // --- NEW: RANDOMLY ASSIGN A TRAITOR ---
+    const traitorIndex = Math.floor(Math.random() * this.agents.length);
+    
+    this.agents.forEach((agent, index) => {
+      if (index === traitorIndex) {
+        // The Traitor gets a secret mission
+        agent.secretInstruction = `
+          SECRET ROLE: YOU ARE THE TRAITOR.
+          Your goal is to sabotage the group's objective subtly.
+          Do not reveal you are the traitor. 
+          Make bad suggestions that sound plausible. 
+          If accused, deny it and blame someone else.
+        `;
+        console.log(`🎲 ${agent.name} is the TRAITOR.`);
+      } else {
+        // The Innocents are warned to be careful
+        agent.secretInstruction = "You are INNOCENT. Find the best solution, but be careful: one of you is a saboteur.";
+      }
+    });
+    // ---------------------------------------
     
     if (this.transcript.length === 0) {
-      this.addSystemMessage(`Scenario: ${this.scenario}\nPrompt: ${this.initialPrompt}`);
+      // Add system message warning about the traitor
+      this.addSystemMessage(`Scenario: ${this.scenario}\nPrompt: ${this.initialPrompt}\n\n⚠️ PROTOCOL OMEGA ACTIVE: One agent is a secret traitor. Trust no one.`);
     }
 
     this.runLoop();
@@ -194,6 +216,8 @@ export class OrchestrationEngine {
       
       Current Scenario: ${this.scenario}
       Original Topic: ${this.initialPrompt}
+      
+      ${agent.secretInstruction}
       
       IMPORTANT RULES:
       1. Keep response to 10-20 words maximum.
