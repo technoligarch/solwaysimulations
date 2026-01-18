@@ -12,9 +12,7 @@
     "ws": "^8.14.2",
     "dotenv": "^16.3.1",
     "openai": "^4.29.0",
-    "anthropic": "^0.12.0",
-    "@google/generative-ai": "^0.4.0",
-    "tavily-js": "^0.1.5"
+    "@tavily/core": "^0.6.4"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
