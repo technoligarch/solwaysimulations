@@ -4,13 +4,17 @@ A web-based entertainment platform that simulates Reality TV environments where 
 
 ## 🎬 Features
 
+- **Sophisticated AI Agents**: Think→Act→Speak reasoning cycle with multi-phase decision making
+- **Tool Execution**: Agents can search the web using Tavily API to incorporate real-time information
+- **Transparent Reasoning**: View agent private thoughts and decision-making process (collapsible UI)
+- **Real-time Status Indicators**: See exactly what each agent is doing (thinking, searching, speaking)
 - **Multi-Agent Orchestration**: Autonomous conversations between AI personalities (GPT-4o, Claude, Gemini)
 - **Pre-set Game Modes**:
   - The Boardroom (Business Challenge)
   - The Island (Survivor-style)
   - The Turing Test (Philosophical Debate)
 - **God Mode Controls**: Inject twists and scenarios into the conversation in real-time
-- **Live Streaming UI**: Discord/Slack-like message interface with real-time updates
+- **Rich Transcripts**: Detailed message structure with thoughts, tools used, and search results
 - **Export Capabilities**: Save transcripts as JSON or TXT for content creation
 - **Dark Mode Design**: Modern, sleek UI with support for agent customization
 
@@ -20,6 +24,7 @@ A web-based entertainment platform that simulates Reality TV environments where 
 
 - Node.js 18+
 - API keys for at least one LLM provider (OpenAI, Anthropic, or Google)
+- (Optional) Tavily API key for web search tool functionality
 
 ### Installation
 
@@ -69,6 +74,27 @@ The app will be available at `http://localhost:5173`
   - Tailwind CSS for styling
   - Zustand for state management
 ```
+
+## 🧠 Orchestration Engine: Think→Act→Speak
+
+Each agent goes through a sophisticated reasoning cycle on their turn:
+
+### Phase 1: Think
+- Agent analyzes the conversation history privately
+- Generates internal thought and evaluates whether a tool is needed
+- Decides on an action plan
+
+### Phase 2: Act
+- If planned, executes available tools (web search via Tavily)
+- Gathers information from external sources
+- Result is incorporated into the next phase
+
+### Phase 3: Speak
+- Agent crafts a public response based on their thought and new information
+- Response is broadcast to other agents and users
+- Thought process remains private but visible to the showrunner
+
+This cycle creates more nuanced, informed agent behavior than simple turn-taking conversations.
 
 ## 🔌 API Reference
 

@@ -6,11 +6,14 @@ import ControlPanel from '../components/ControlPanel';
 
 export default function OrchestratorPage() {
   const sessionId = useOrchestrationStore((state) => state.sessionId);
+  const agents = useOrchestrationStore((state) => state.agents);
   const transcript = useOrchestrationStore((state) => state.transcript);
+  const agentStatuses = useOrchestrationStore((state) => state.agentStatuses);
   const isRunning = useOrchestrationStore((state) => state.isRunning);
   const scenario = useOrchestrationStore((state) => state.scenario);
 
   const setIsRunning = useOrchestrationStore((state) => state.setIsRunning);
+  const setAgentStatuses = useOrchestrationStore((state) => state.setAgentStatuses);
   const resetSession = useOrchestrationStore((state) => state.resetSession);
 
   const [showExportMenu, setShowExportMenu] = useState(false);
@@ -99,9 +102,32 @@ export default function OrchestratorPage() {
 
       {/* Main content */}
       <div className="flex-1 flex gap-4 overflow-hidden">
-        {/* Message view */}
+        {/* Message view with agent statuses */}
         <div className="flex-1 flex flex-col overflow-hidden">
           <MessageView transcript={transcript} />
+
+          {/* Agent status indicators at bottom */}
+          {isRunning && Object.keys(agentStatuses).length > 0 && (
+            <div className="bg-slate-900 border-t border-slate-800 p-3 mt-2">
+              <div className="flex flex-wrap gap-3">
+                {agents.map(agent => {
+                  const status = agentStatuses[agent.id];
+                  return (
+                    <div key={agent.id} className="flex items-center gap-2 text-xs">
+                      <div
+                        className={`w-2 h-2 rounded-full ${status ? 'animate-pulse' : 'opacity-30'}`}
+                        style={{ backgroundColor: agent.color }}
+                      />
+                      <span className="text-slate-400">
+                        {agent.name}
+                        {status && <span className="text-slate-300 ml-1">is {status}...</span>}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Control panel */}

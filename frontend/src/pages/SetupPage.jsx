@@ -17,6 +17,7 @@ export default function SetupPage({ onSetupComplete }) {
   const setInitialPrompt = useOrchestrationStore((state) => state.setInitialPrompt);
   const setIsRunning = useOrchestrationStore((state) => state.setIsRunning);
   const addMessage = useOrchestrationStore((state) => state.addMessage);
+  const setAgentStatuses = useOrchestrationStore((state) => state.setAgentStatuses);
   const setApiKeys = useOrchestrationStore((state) => state.setApiKeys);
 
   const handleScenarioSelect = (scenarioId) => {
@@ -58,6 +59,8 @@ export default function SetupPage({ onSetupComplete }) {
           addMessage(message.data);
         } else if (message.type === 'status') {
           setIsRunning(message.data.status === 'running');
+        } else if (message.type === 'status_update') {
+          setAgentStatuses(message.data);
         }
       });
 

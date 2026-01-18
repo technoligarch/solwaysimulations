@@ -4,6 +4,7 @@ export const useOrchestrationStore = create((set) => ({
   sessionId: null,
   agents: [],
   transcript: [],
+  agentStatuses: {},
   isRunning: false,
   scenario: '',
   initialPrompt: '',
@@ -17,6 +18,7 @@ export const useOrchestrationStore = create((set) => ({
   setSessionId: (sessionId) => set({ sessionId }),
   setAgents: (agents) => set({ agents }),
   setTranscript: (transcript) => set({ transcript }),
+  setAgentStatuses: (agentStatuses) => set({ agentStatuses }),
   setIsRunning: (isRunning) => set({ isRunning }),
   setScenario: (scenario) => set({ scenario }),
   setInitialPrompt: (initialPrompt) => set({ initialPrompt }),
@@ -39,6 +41,7 @@ export const useOrchestrationStore = create((set) => ({
     set({
       sessionId: null,
       transcript: [],
+      agentStatuses: {},
       isRunning: false,
     }),
 }));

@@ -4,6 +4,7 @@ import { WebSocketServer } from 'ws';
 import { createServer } from 'http';
 import { OrchestrationEngine } from './orchestration.js';
 import { loadApiClients } from './apiClients.js';
+import { toolbox } from './tool_executor.js';
 import 'dotenv/config';
 
 const app = express();
@@ -33,8 +34,11 @@ app.post('/api/session/create', (req, res) => {
     agents,
     scenario,
     initialPrompt,
-    apiClients
+    apiClients,
+    toolbox
   );
+
+  engine.setSessionId(sessionId);
 
   sessions.set(sessionId, engine);
   wsClients.set(sessionId, new Set());

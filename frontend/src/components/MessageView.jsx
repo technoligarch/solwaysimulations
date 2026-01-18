@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import MessageBubble from './MessageBubble';
+import Turn from './Turn';
 
 export default function MessageView({ transcript }) {
   const endRef = useRef(null);
@@ -10,14 +10,14 @@ export default function MessageView({ transcript }) {
 
   return (
     <div className="bg-slate-950 rounded-lg p-6 overflow-y-auto flex-1 flex flex-col">
-      <div className="space-y-4 flex-1">
+      <div className="space-y-2 flex-1">
         {transcript.length === 0 ? (
           <div className="flex items-center justify-center h-full text-slate-500">
             <p>Waiting for messages...</p>
           </div>
         ) : (
           transcript.map((message, idx) => (
-            <MessageBubble key={idx} message={message} />
+            <Turn key={idx} turnData={message} />
           ))
         )}
       </div>
