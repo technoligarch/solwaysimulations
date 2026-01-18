@@ -183,25 +183,11 @@ export class OrchestrationEngine {
   }
 
   async getAgentResponse(agent, messages) {
-    const provider = agent.provider.toLowerCase();
-
-    if (provider === 'openai') {
-      return await this.getOpenAIResponse(agent, messages);
-    } else if (provider === 'anthropic') {
-      return await this.getAnthropicResponse(agent, messages);
-    } else if (provider === 'google') {
-      return await this.getGoogleResponse(agent, messages);
-    }
-
-    throw new Error(`Unsupported provider: ${provider}`);
-  }
-
-  async getOpenAIResponse(agent, messages) {
-    const client = this.apiClients.openai;
-    if (!client) throw new Error('OpenAI client not configured');
+    const client = this.apiClients.openrouter;
+    if (!client) throw new Error('OpenRouter client not configured');
 
     const response = await client.chat.completions.create({
-      model: agent.model || 'gpt-4o',
+      model: agent.model,
       messages: [
         { role: 'system', content: agent.systemPrompt },
         ...messages,
@@ -211,44 +197,6 @@ export class OrchestrationEngine {
     });
 
     return response.choices[0].message.content;
-  }
-
-  async getAnthropicResponse(agent, messages) {
-    const client = this.apiClients.anthropic;
-    if (!client) throw new Error('Anthropic client not configured');
-
-    const response = await client.messages.create({
-      model: agent.model || 'claude-3-5-sonnet-20241022',
-      max_tokens: 200,
-      system: agent.systemPrompt,
-      messages: messages,
-    });
-
-    return response.content[0].text;
-  }
-
-  async getGoogleResponse(agent, messages) {
-    const client = this.apiClients.google;
-    if (!client) throw new Error('Google client not configured');
-
-    const model = client.getGenerativeModel({
-      model: agent.model || 'gemini-1.5-pro',
-      systemInstruction: agent.systemPrompt,
-    });
-
-    const chat = model.startChat({
-      history: messages
-        .filter(m => m.role !== 'system')
-        .map(msg => ({
-          role: msg.role === 'user' ? 'user' : 'model',
-          parts: [{ text: msg.content }],
-        })),
-    });
-
-    const lastMessage = messages[messages.length - 1]?.content || 'Continue naturally.';
-    const response = await chat.sendMessage(lastMessage);
-
-    return response.response.text();
   }
 
   buildConversationHistory() {
